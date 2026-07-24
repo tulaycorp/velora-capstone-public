@@ -1,0 +1,27 @@
+.DS_Store
+node_modules/
+.next/
+.next-dev/
+.next-e2e/
+out/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+backend/.venv/
+backend/.pytest_cache/
+backend/**/__pycache__/
+*.pyc
+
+# Never commit local databases
+backend/*.db
+
+.env
+.env.local
+
+other_repos/
+
+# Next.js and TypeScript generated files
+next-env.d.ts
+*.tsbuildinfo
