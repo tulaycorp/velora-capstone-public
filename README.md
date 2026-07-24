@@ -1,137 +1,128 @@
 # Velora
 
-Velora is a provider-first SaaS workspace for creating and managing print-on-demand products through POD providers such as Printify and Gelato.
+**A provider-first SaaS workspace for creating, publishing, and managing print-on-demand (POD) products.**
 
-The MVP focuses on the product creation workflow:
+Velora turns finished artwork into provider-ready product listings. Sellers move through a structured workflow — design → blueprint → provider draft → AI-assisted listing content → storefront publishing — while Velora coordinates Printify and Gelato behind a single calm workspace.
 
-```text
-Design/artwork
--> Product Blueprint
--> Provider/store-specific draft
--> AI-assisted listing content
--> Provider-side product publishing
-```
+<p align="center">
+  <em>Design/artwork → Product Blueprint → Provider/store draft → AI-assisted listing → Provider-side publishing</em>
+</p>
 
-New product publishing flows through POD provider-connected stores rather than directly to Etsy, Shopify, Amazon, or other storefront APIs. For already-published Etsy listings, Product Detail supports a narrow direct-edit path for approved listing metadata and inventory fields.
+---
+
+## Overview
+
+Print-on-demand sellers juggle artwork, provider templates, marketplace mockups, listing copy, pricing, and store context — often across more than one storefront. Velora reduces that repetitive work into one workspace: upload or reference artwork, pick a provider-backed blueprint, prepare mockups, generate and edit listing content, set pricing, save drafts, and push to connected storefronts through POD provider APIs.
+
+New product publishing flows through provider-connected stores rather than directly to Etsy, Shopify, or Amazon. For already-published Etsy listings, a narrow direct-edit path supports approved listing metadata and inventory fields.
 
 Authentication is handled by Clerk, but organization access is owned inside Velora. Users sign in first, then create an organization or request access by join code before the workspace unlocks.
 
-## Stack
+## Key Features
 
-- Frontend / BFF: Next.js, Clerk, shadcn/ui, Zod, Arcjet
-- Backend API: FastAPI, SQLAlchemy, Alembic, Neon Postgres, Clerk JWT verification, Pydantic
-- Storage: Cloudflare R2
-- Workers: Redis + Dramatiq workers with an APScheduler process for enqueue, recovery, and snapshot refresh
+- **Product Studio** — Author product drafts from blueprints, attach design assets and mockups, and prepare provider-ready listings with dirty-state tracking and publish-readiness checks.
+- **Blueprints** — Reusable product concepts with provider-reference validation and snapshots, so a single blueprint seeds many store-specific drafts.
+- **AI Listing Generation** — A backend-only, review-first assistant that drafts Etsy-compliant titles, descriptions, tags, and SEO fields from a saved design image and product context. Nothing is published without an explicit apply.
+- **Provider Publishing** — Durable, leased publishing jobs that push drafts to Printify and Gelato with idempotent enqueue, snapshot policy, and a transactional outbox for multi-replica dispatch.
+- **Orders & Sync** — Server-paginated orders workspace with a five-hour server-enforced sync cadence, manual cooldown bypass, active-job reuse, and explicit partial/failed/last-success status.
+- **Business Analytics** — Marketplace-first sales attribution with adaptive comparison charts, KPI coverage, lazy server-paginated tables, CSV export, configurable reporting currency, and a normalized expense ledger.
+- **Etsy Integration** — PKCE OAuth, seller-identity checks, token refresh, shop discovery, receipt/transaction/ledger reads, and direct listing/inventory/gallery synchronization.
+- **Multi-tenant & Secure** — Organization-scoped data with forced row-level security, separate non-owner runtime/worker database roles, encrypted provider credentials, and S3-compatible private asset storage.
 
-## Run Frontend
+## Tech Stack
 
-```bash
-npm install
-npm run dev
-```
+| Layer | Technology |
+|-------|-----------|
+| **Frontend / BFF** | Next.js 15 (App Router), React 19, Clerk, shadcn/ui, Tailwind CSS, Recharts, Zod |
+| **Backend API** | FastAPI, SQLAlchemy 2.0, Alembic, Pydantic |
+| **Database** | PostgreSQL (Neon) with forced RLS and tenant-scoped access |
+| **Storage** | Cloudflare R2 (S3-compatible) for design assets and mockups |
+| **Workers** | Redis + Dramatiq workers with APScheduler for enqueue, recovery, and snapshot refresh |
+| **Auth** | Clerk (JWT verification on the backend; route protection via `middleware.ts`) |
+| **AI** | OpenRouter adapter with strict JSON-schema output, vision-capable listing generation |
 
-Open:
+## System Architecture
+
+Velora is a split monolith: a Next.js frontend with a backend-for-frontend (BFF) proxy, and a FastAPI service backed by Postgres, Redis, and S3-compatible storage.
 
 ```text
-http://127.0.0.1:3000/dashboard
+Browser
+  │
+  ▼
+Next.js (App Router + middleware.ts)
+  │── Workspace UI (shadcn/ui)
+  └── BFF proxy (/api/backend/*)  ──►  FastAPI
+                                          │
+        ┌─────────────────────────────────┼──────────────────────────┐
+        ▼                                 ▼                          ▼
+   PostgreSQL (Neon)                 Redis broker              Cloudflare R2
+   tenant-scoped, RLS                Dramatiq + APScheduler     design assets,
+                                     workers / scheduler         mockups
+                                          │
+                                          ▼
+                              Provider adapters (Printify, Gelato, Etsy)
 ```
 
-## Run Backend
+- **BFF boundary** — Browser code calls the Next.js BFF at `/api/backend/*`, never the FastAPI origin directly. The BFF streams uploads and enforces known-length request limits.
+- **Background jobs** — Order sync, publishing dispatch, and analytics snapshots run as leased Dramatiq actors with atomic lease claims, heartbeat, and multi-replica-safe expired-lease recovery.
+- **Tenant isolation** — Every tenant table carries organization foreign keys and forced RLS; the API rejects owner/superuser/BYPASSRLS credentials at startup.
+
+## Workspace Routes
+
+| Route | Purpose |
+|-------|---------|
+| `/onboarding` | Post-auth organization onboarding and pending-access |
+| `/dashboard` | Workspace overview |
+| `/product-studio` | Product authoring with AI listing generation |
+| `/blueprints` | Reusable product blueprint management |
+| `/products` | Product catalog with store-context filtering |
+| `/products/[id]` | Product detail, mockups, and publishing |
+| `/orders` | Server-paginated orders with sync status |
+| `/analytics` | Business analytics, expenses, and SEO tables |
+| `/account` | Profile, email, password, and session settings |
+| `/settings` | Organization, members, providers, and store connections |
+
+## Getting Started
+
+See **[SETUP.md](SETUP.md)** for full prerequisites, environment configuration, and run instructions.
+
+Quick start:
 
 ```bash
+# Frontend
+npm install && npm run dev          # http://127.0.0.1:3000
+
+# Backend
 cd backend
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+./.venv/bin/alembic upgrade head
+./.venv/bin/uvicorn app.main:app --reload   # http://127.0.0.1:8000
 
-Open:
-
-```text
-http://127.0.0.1:8000/health
-```
-
-## Run The Integrated Stack
-
-Use the checked-in env files and start both services together:
-
-```bash
+# Or run the full stack together
 ./run.sh
 ```
 
-The launcher now expects real Clerk and Supabase env files and will fail fast if placeholders are still present.
-
-## Environment
-
-Start from:
-
-```text
-.env.local.example
-backend/.env.example
-```
-
-The recommended backend auth mode is:
-
-```text
-VELORA_AUTH_MODE=auto
-```
-
-That mode enables Clerk verification when `VELORA_CLERK_JWKS_URL` is present and falls back to the seeded local actor only in explicit development/test environments. Staging and production fail startup unless Clerk verification is fully configured.
-
-This repository currently uses Next.js `15.x`, so the active Clerk route-protection file is `middleware.ts`. When the app upgrades to Next.js `16+`, rename it to `proxy.ts`.
-
 ## Verification
 
-Frontend:
-
 ```bash
-npm run lint
-npm run build
+# Frontend
+npm run lint && npm run build && npm run test:e2e
+
+# Backend
+cd backend && ./.venv/bin/pytest
 ```
 
-Backend:
+## Team
 
-```bash
-cd backend
-.venv/bin/python -m pytest
-```
+**tulaycorp**
 
-## Current Routes
+- **Paul Wendell Angulo** — Project Manager
+- **Angelo David Macayran** — Developer
+- **John Lloyd Borigas** — QA / Documentarian
 
-Frontend:
+## License
 
-- `/onboarding`
-- `/dashboard`
-- `/product-studio`
-- `/blueprints`
-- `/products`
-- `/orders`
-- `/analytics`
-- `/settings`
+© 2026 tulaycorp. All Rights Reserved.
 
-Backend:
-
-- `GET /health`
-- `GET /blueprints`
-- `GET /products`
-- `GET /product-studio`
-- `GET /pod-providers`
-- `GET /provider-store-connections`
-- `GET /ai/capabilities`
-- `POST /products/{id}/ai-generations`
-- `GET /products/{id}/ai-generations`
-- `POST /products/{id}/ai-generations/{generation_id}/apply`
-- `GET /publishing-jobs`
-- `GET /orders`
-- `GET /sync-jobs`
-
-## Documentation
-
-See [SETUP.md](SETUP.md) for install, run, and test instructions.
-
-## Notes
-
-- Browser code should call the Next.js BFF at `/api/backend/*`, not the FastAPI origin directly.
-- Public database tables use explicit deny policies for `anon` and `authenticated`; direct Data API access is intentionally off for now.
-- On IPv4-only networks, use the session pooler DSN instead of the direct database host.
+No part of this repository may be reproduced, distributed, or transmitted in any form or by any means, without the prior written permission of the copyright holder.
