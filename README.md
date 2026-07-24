@@ -1,8 +1,8 @@
 # Velora
 
-**A provider-first SaaS workspace for creating, publishing, and managing print-on-demand (POD) products.**
+**A product operations workspace for Print-on-Demand (POD) businesses.**
 
-Velora turns finished artwork into provider-ready product listings. Sellers move through a structured workflow — design → blueprint → provider draft → AI-assisted listing content → storefront publishing — while Velora coordinates Printify and Gelato behind a single calm workspace.
+Velora turns finished artwork into provider-ready products. Small e-commerce teams move through one structured workflow — design → blueprint → provider draft → AI-assisted listing content → storefront publishing — while Velora coordinates Printify and Gelato behind a single calm interface. The focus is product creation, not storefront management: new products flow through POD provider APIs rather than directly to Etsy, Shopify, or Amazon.
 
 <p align="center">
   <em>Design/artwork → Product Blueprint → Provider/store draft → AI-assisted listing → Provider-side publishing</em>
@@ -10,69 +10,84 @@ Velora turns finished artwork into provider-ready product listings. Sellers move
 
 ---
 
-## Overview
+## The Problem
 
-Print-on-demand sellers juggle artwork, provider templates, marketplace mockups, listing copy, pricing, and store context — often across more than one storefront. Velora reduces that repetitive work into one workspace: upload or reference artwork, pick a provider-backed blueprint, prepare mockups, generate and edit listing content, set pricing, save drafts, and push to connected storefronts through POD provider APIs.
+POD businesses reuse the same artwork across products, providers, and storefronts. But every product still demands repetitive preparation — titles, descriptions, tags, SEO fields, SKU, pricing, margins, provider templates, store-specific formatting, listing images, and provider-side product creation — followed by tracking whether publishing succeeded or failed and keeping order state visible.
 
-New product publishing flows through provider-connected stores rather than directly to Etsy, Shopify, or Amazon. For already-published Etsy listings, a narrow direct-edit path supports approved listing metadata and inventory fields.
+As designs, providers, and stores multiply, this work becomes slow, inconsistent, and hard to track. Velora centralizes it while preserving provider-specific rules and human review. The core value is the **product creation and listing workflow**: converting finished designs into complete, optimized, provider-ready products without re-doing manual setup for each storefront.
 
-Authentication is handled by Clerk, but organization access is owned inside Velora. Users sign in first, then create an organization or request access by join code before the workspace unlocks.
+## What Velora Is — and Isn't
 
-## Key Features
+Velora is a **product creation system**, not a generic analytics dashboard or a direct storefront manager.
 
-- **Product Studio** — Author product drafts from blueprints, attach design assets and mockups, and prepare provider-ready listings with dirty-state tracking and publish-readiness checks.
-- **Blueprints** — Reusable product concepts with provider-reference validation and snapshots, so a single blueprint seeds many store-specific drafts.
-- **AI Listing Generation** — A backend-only, review-first assistant that drafts Etsy-compliant titles, descriptions, tags, and SEO fields from a saved design image and product context. Nothing is published without an explicit apply.
-- **Provider Publishing** — Durable, leased publishing jobs that push drafts to Printify and Gelato with idempotent enqueue, snapshot policy, and a transactional outbox for multi-replica dispatch.
-- **Orders & Sync** — Server-paginated orders workspace with a five-hour server-enforced sync cadence, manual cooldown bypass, active-job reuse, and explicit partial/failed/last-success status.
-- **Business Analytics** — Marketplace-first sales attribution with adaptive comparison charts, KPI coverage, lazy server-paginated tables, CSV export, configurable reporting currency, and a normalized expense ledger.
-- **Etsy Integration** — PKCE OAuth, seller-identity checks, token refresh, shop discovery, receipt/transaction/ledger reads, and direct listing/inventory/gallery synchronization.
-- **Multi-tenant & Secure** — Organization-scoped data with forced row-level security, separate non-owner runtime/worker database roles, encrypted provider credentials, and S3-compatible private asset storage.
+```text
+Velora  →  Printify / Gelato  →  Provider-connected storefront listing
+```
 
-## Tech Stack
+- New products are created and published through POD provider APIs — Velora does **not** publish directly to Etsy, Shopify, or Amazon in its current scope.
+- Etsy has a narrow direct path for shop discovery, analytics totals, and supported edits to *already-published* listings.
+- The publishing target is owned by the selected **Product Blueprint** (one provider + one connected store + one template reference), not selected ad hoc in the editor.
 
-| Layer | Technology |
-|-------|-----------|
-| **Frontend / BFF** | Next.js 15 (App Router), React 19, Clerk, shadcn/ui, Tailwind CSS, Recharts, Zod |
-| **Backend API** | FastAPI, SQLAlchemy 2.0, Alembic, Pydantic |
-| **Database** | PostgreSQL (Neon) with forced RLS and tenant-scoped access |
-| **Storage** | Cloudflare R2 (S3-compatible) for design assets and mockups |
-| **Workers** | Redis + Dramatiq workers with APScheduler for enqueue, recovery, and snapshot refresh |
-| **Auth** | Clerk (JWT verification on the backend; route protection via `middleware.ts`) |
-| **AI** | OpenRouter adapter with strict JSON-schema output, vision-capable listing generation |
+## Architecture
 
-## System Architecture
-
-Velora is a split monolith: a Next.js frontend with a backend-for-frontend (BFF) proxy, and a FastAPI service backed by Postgres, Redis, and S3-compatible storage.
+Velora is a **modular monolith**. The frontend, API, and workers are separate runtime processes but remain one application, one repository, and one domain model — deliberately not microservices. The backend uses **adapter-based provider integrations** so future providers can be added without rewriting the application.
 
 ```text
 Browser
   │
   ▼
-Next.js (App Router + middleware.ts)
-  │── Workspace UI (shadcn/ui)
+Next.js 15 (App Router + middleware.ts)
+  │── Workspace UI (shadcn/ui, Tailwind, Recharts)
   └── BFF proxy (/api/backend/*)  ──►  FastAPI
                                           │
-        ┌─────────────────────────────────┼──────────────────────────┐
-        ▼                                 ▼                          ▼
-   PostgreSQL (Neon)                 Redis broker              Cloudflare R2
-   tenant-scoped, RLS                Dramatiq + APScheduler     design assets,
-                                     workers / scheduler         mockups
+        ┌─────────────────────────────────┼───────────────────────────┐
+        ▼                                 ▼                           ▼
+   PostgreSQL (Neon)                 Redis broker               Cloudflare R2
+   tenant-scoped, forced RLS         Dramatiq + APScheduler      design assets,
+                                     workers / scheduler          mockups
                                           │
                                           ▼
                               Provider adapters (Printify, Gelato, Etsy)
 ```
 
-- **BFF boundary** — Browser code calls the Next.js BFF at `/api/backend/*`, never the FastAPI origin directly. The BFF streams uploads and enforces known-length request limits.
-- **Background jobs** — Order sync, publishing dispatch, and analytics snapshots run as leased Dramatiq actors with atomic lease claims, heartbeat, and multi-replica-safe expired-lease recovery.
-- **Tenant isolation** — Every tenant table carries organization foreign keys and forced RLS; the API rejects owner/superuser/BYPASSRLS credentials at startup.
+**Key boundaries:**
+
+- **BFF boundary** — The browser calls the Next.js BFF at `/api/backend/*`, never the FastAPI origin, Postgres, R2, or provider APIs directly. The BFF streams uploads and enforces known-length request limits.
+- **Modular domain** — Dashboard, Product Studio, Blueprints, Products, Providers, Store Connections, Store Context, AI Generation, Publishing Jobs, Orders, Analytics, and Settings are distinct internal modules.
+- **Background jobs** — Order sync, publishing dispatch, and analytics snapshots run as leased Dramatiq actors with atomic lease claims, heartbeat, ownership-guarded transitions, and multi-replica-safe expired-lease recovery.
+- **Tenant isolation** — Every tenant table carries organization foreign keys and forced row-level security; the API rejects owner/superuser/`BYPASSRLS` credentials at startup and uses separate non-owner `velora_runtime` and `velora_worker` database roles.
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Web & BFF** | Next.js 15 (App Router), React 19, TypeScript, Clerk, shadcn/ui/Radix, Tailwind CSS 3, Recharts, Motion, Lucide |
+| **Domain API** | FastAPI, Pydantic, SQLAlchemy 2.0, Alembic (22 migrations) |
+| **Database** | PostgreSQL on Neon — forced RLS, tenant-scoped access, expand/contract migrations |
+| **Object storage** | Cloudflare R2 (S3-compatible) for design assets and listing images |
+| **Async runtime** | Redis + Dramatiq workers, APScheduler, leased job lifecycle with outbox dispatch |
+| **Auth** | Clerk — JWT verification on the backend; route protection via `middleware.ts` |
+| **Provider adapters** | Printify, Gelato, Etsy (PKCE OAuth) |
+| **AI** | Backend-only OpenRouter adapter (Qwen3-VL-8B-Instruct) — review-first, disabled by default |
+
+## Key Features
+
+- **Product Studio** — The central feature. Author product drafts from a blueprint, upload design sources and listing images, edit title/description/tags/SKU/pricing, and prepare provider-ready listings with dirty-state tracking and publish-readiness checks.
+- **Product Blueprints** — Reusable, store-bound provider template references (Printify product URL or Gelato template ID) with provider validation and stored configuration snapshots. One blueprint seeds many store-specific drafts.
+- **AI Listing Generation** — A backend-only, review-first assistant that drafts Etsy-compliant titles, descriptions, tags, and SEO fields from a saved design image and product context. Nothing is saved or published without an explicit, revision-checked apply.
+- **Provider Publishing** — Durable, leased publishing jobs push drafts to Printify and Gelato with idempotent enqueue, immutable revision snapshots, a transactional outbox for multi-replica dispatch, and provider deep links.
+- **Orders & Sync** — Server-paginated orders workspace with a five-hour server-enforced sync cadence, manual cooldown bypass, active-job reuse, and explicit partial/failed/last-success status.
+- **Business Analytics** — Marketplace-first sales attribution with adaptive comparison charts, KPI coverage, lazy server-paginated tables, CSV export, configurable reporting currency, and a normalized expense ledger.
+- **Store Context** — A store switcher controls workspace scope (`All Stores` or a single provider-connected store), remembered across reloads, filtering products, jobs, orders, and analytics.
+- **Etsy Integration** — PKCE OAuth, seller-identity checks, token refresh, shop discovery, automatic mapping to Printify/Gelato storefronts, receipt/transaction/ledger reads, and direct listing/inventory/gallery synchronization.
+- **Multi-tenant & Secure** — Organization-scoped data with encrypted provider credentials, runtime nonce-based CSP, browser security headers, structured request-correlated logging with redaction, and BFF upstream-response guards.
 
 ## Workspace Routes
 
 | Route | Purpose |
 |-------|---------|
 | `/onboarding` | Post-auth organization onboarding and pending-access |
-| `/dashboard` | Workspace overview |
+| `/dashboard` | Store-aware overview, summaries, and recent activity |
 | `/product-studio` | Product authoring with AI listing generation |
 | `/blueprints` | Reusable product blueprint management |
 | `/products` | Product catalog with store-context filtering |
