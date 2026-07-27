@@ -1,6 +1,8 @@
 import type { OnboardingStatus } from "@/lib/backend-api";
 
 export const PASSWORD_RESET_SUCCESS_PATH = "/sign-in?password-reset=success";
+export const POST_AUTH_HANDOFF_PATH = "/auth/complete";
+export const SIGN_UP_POST_AUTH_PATH = "/onboarding";
 
 export type AuthEmailDeliveryNotice = {
   description: string;

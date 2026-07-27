@@ -315,6 +315,40 @@ def test_clerk_user_record_creation_recovers_from_concurrent_insert(client, monk
     ]
 
 
+def test_clerk_user_record_does_not_commit_when_profile_is_unchanged(client, monkeypatch) -> None:
+    actor = ActorContext(
+        organization_id=None,
+        actor_id="user_existing_profile",
+        auth_provider="clerk",
+        email="existing@example.com",
+        first_name="Existing",
+        last_name="Member",
+        image_url="https://img.clerk.test/existing.png",
+    )
+
+    with client.app.state.testing_session_local() as seed_db:
+        seed_db.add(
+            User(
+                id=actor.actor_id,
+                auth_provider=actor.auth_provider,
+                email=actor.email,
+                first_name=actor.first_name,
+                last_name=actor.last_name,
+                image_url=actor.image_url,
+            )
+        )
+        seed_db.commit()
+
+    with client.app.state.testing_session_local() as db:
+        commit_calls: list[bool] = []
+        monkeypatch.setattr(db, "commit", lambda: commit_calls.append(True))
+
+        user = identity_module.ensure_user_record(db, actor=actor)
+
+        assert user.id == actor.actor_id
+        assert commit_calls == []
+
+
 def test_clerk_auth_mode_supports_create_join_and_approve_flow(client, monkeypatch) -> None:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     kid = "test-key"

@@ -21,11 +21,13 @@ import { SettingsSkeleton } from "@/components/workspace/resource-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CodeInput } from "@/components/ui/code-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Separator } from "@/components/ui/separator";
 import { leaveCurrentOrganization } from "@/lib/backend-api";
+import { verifySessionWithCurrentPassword } from "@/lib/clerk-password-verification";
 import { cn } from "@/lib/utils";
 
 type ProfileDraft = {
@@ -425,6 +427,16 @@ function ClerkAccountSettingsContent() {
         throw new Error("Enter your current password.");
       }
 
+      if (user.passwordEnabled) {
+        if (!session) {
+          throw new Error("Your session is unavailable. Refresh the page and try again.");
+        }
+        await verifySessionWithCurrentPassword(
+          session,
+          passwordDraft.currentPassword.trim()
+        );
+      }
+
       await updatePassword({
         currentPassword: user.passwordEnabled ? passwordDraft.currentPassword.trim() : undefined,
         newPassword: passwordDraft.newPassword.trim(),
@@ -707,10 +719,9 @@ function ClerkAccountSettingsContent() {
                   </p>
                   <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                     <FieldBlock label="Verification code" htmlFor="email-verification-code">
-                      <Input
+                      <CodeInput
                         id="email-verification-code"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
+                        maxLength={6}
                         value={verificationCode}
                         onChange={(event) => setVerificationCode(event.target.value)}
                         className="border-border bg-background/70"

@@ -91,8 +91,7 @@ def test_settings_bound_database_pool_by_default() -> None:
     assert settings.database_pool_size == 3
     assert settings.database_max_overflow == 0
     assert settings.database_pool_timeout_seconds == 10
-    assert settings.database_pool_recycle_seconds == 300
-    assert settings.database_idle_pool_purge_seconds == 300
+    assert settings.database_pool_recycle_seconds == 1800
 
 
 def test_settings_allow_95_mib_files_with_multipart_request_overhead() -> None:

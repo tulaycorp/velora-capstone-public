@@ -54,13 +54,17 @@ def set_database_request_context(
     session.info[ACTOR_CONTEXT_KEY] = actor_id or ""
     session.info[ORGANIZATION_CONTEXT_KEY] = organization_id or ""
     session.info.setdefault(JOIN_CODE_CONTEXT_KEY, "")
+    transaction_already_active = session.in_transaction()
     connection = session.connection()
-    _apply_postgres_context(session, connection)
+    if transaction_already_active:
+        _apply_postgres_context(session, connection)
 
 
 def set_database_join_code_context(session: Session, *, join_code: str) -> None:
     """Authorize one join-code lookup without opening organization-wide reads."""
 
     session.info[JOIN_CODE_CONTEXT_KEY] = join_code.strip().upper()
+    transaction_already_active = session.in_transaction()
     connection = session.connection()
-    _apply_postgres_context(session, connection)
+    if transaction_already_active:
+        _apply_postgres_context(session, connection)

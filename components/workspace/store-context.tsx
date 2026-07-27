@@ -5,9 +5,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState
 } from "react";
+import { useAppSessionContext } from "@/components/auth/app-session-context";
 import {
   fetchProviders,
   fetchStoreConnections,
@@ -20,6 +22,8 @@ import {
   syncStoreSelection
 } from "@/components/workspace/store-context-state";
 import { useRefetchOnWindowFocus } from "@/hooks/use-refetch-on-window-focus";
+import { workspacePageCacheKeys } from "@/lib/workspace-page-cache-keys";
+import { loadWorkspacePageResource } from "@/lib/workspace-page-cache";
 
 type StoreContextValue = {
   providers: PodProvider[];
@@ -42,6 +46,14 @@ export function StoreContextProvider({
   children: React.ReactNode;
   initialSelectedStoreId?: string | null;
 }) {
+  const { sessionContext } = useAppSessionContext();
+  const cacheScope = useMemo(
+    () => ({
+      organizationId: sessionContext.organization?.id ?? null,
+      userId: sessionContext.user.id
+    }),
+    [sessionContext.organization?.id, sessionContext.user.id]
+  );
   const [providers, setProviders] = useState<PodProvider[]>([]);
   const [storeConnections, setStoreConnections] = useState<ProviderStoreConnection[]>([]);
   const [selectedStoreId, setSelectedStoreIdState] = useState(initialSelectedStoreId ?? "all");
@@ -67,10 +79,11 @@ export function StoreContextProvider({
       setError(null);
     }
     try {
-      const [nextProviders, nextConnections] = await Promise.all([
-        fetchProviders(),
-        fetchStoreConnections()
-      ]);
+      const [nextProviders, nextConnections] = await loadWorkspacePageResource(
+        workspacePageCacheKeys.storeContext(),
+        cacheScope,
+        () => Promise.all([fetchProviders(), fetchStoreConnections()])
+      );
       setProviders(nextProviders);
       setStoreConnections(nextConnections);
       setHasLoadedStoreConnections(true);
@@ -89,7 +102,7 @@ export function StoreContextProvider({
         setLoading(false);
       }
     }
-  }, []);
+  }, [cacheScope]);
 
   useEffect(() => {
     void refresh();

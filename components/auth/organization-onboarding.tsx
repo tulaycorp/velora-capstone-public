@@ -7,6 +7,7 @@ import { ArrowRight, Building2, KeyRound } from "lucide-react";
 import { AuthSignOutControl } from "@/components/auth/auth-page-controls";
 import { AppSessionContextProvider, useAppSessionContext } from "@/components/auth/app-session-context";
 import { Button } from "@/components/ui/button";
+import { CodeInput } from "@/components/ui/code-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -335,12 +336,13 @@ function OnboardingContent() {
                     <form className="mt-8 max-w-lg space-y-6" onSubmit={handleJoinOrganization}>
                       <div className="space-y-2">
                         <Label htmlFor="organization-code">{activePath.fieldLabel}</Label>
-                        <Input
+                        <CodeInput
                           id="organization-code"
+                          codeKind="alphanumeric"
+                          maxLength={8}
                           value={joinCode}
                           onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
                           placeholder={activePath.fieldPlaceholder}
-                          autoCapitalize="characters"
                           className={authInputClassName}
                         />
                       </div>

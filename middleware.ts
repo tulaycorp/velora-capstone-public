@@ -12,6 +12,7 @@ import {
 const authMode = resolveFrontendAuthMode();
 
 const isProtectedRoute = createRouteMatcher([
+  "/auth/complete(.*)",
   "/onboarding(.*)",
   "/dashboard(.*)",
   "/product-studio(.*)",

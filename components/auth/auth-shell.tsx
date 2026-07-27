@@ -17,7 +17,6 @@ const clerkSharedVariables = {
 };
 
 export const clerkAuthAppearance = {
-  theme: "simple",
   options: {
     autoFocus: false,
     elevation: "flush",
@@ -32,39 +31,45 @@ export const clerkAuthAppearance = {
   },
   elements: {
     rootBox: "w-full",
-    cardBox: "w-full shadow-none",
-    card: "border-0 bg-transparent px-0 py-0 text-foreground shadow-none",
+    cardBox: "velora-auth-card-box w-full",
+    card: "velora-auth-card border-0 bg-transparent px-0 py-0 text-foreground",
     header: "hidden",
     footer: "hidden",
-    main: "w-full space-y-6",
-    form: "w-full space-y-5",
+    main: "velora-auth-main w-full",
+    form: "velora-auth-form w-full",
     socialButtons: "w-full",
     socialButtonsBlockButton:
       "velora-social-provider-button h-12 !w-full rounded-none border border-white/10 bg-white/[0.02] px-4 text-foreground shadow-none transition-colors hover:border-primary/40 hover:bg-white/[0.04]",
     socialButtonsProviderIcon: "velora-social-provider-icon",
     socialButtonsBlockButtonText: "font-medium text-foreground",
+    dividerRow: "velora-auth-divider",
     dividerLine: "bg-white/10",
     dividerText: "px-3 text-[10px] uppercase tracking-[0.32em] text-muted-foreground",
     formFieldRow: "velora-auth-form-row w-full",
     formField: "velora-auth-form-field w-full",
+    formFieldErrorText: "velora-auth-field-feedback",
     formFieldLabel: "text-[10px] uppercase tracking-[0.28em] text-muted-foreground",
     formFieldInputGroup: "relative",
     formFieldInput:
-      "h-14 !w-full rounded-none border-x-0 border-t-0 border-b border-white/12 bg-transparent px-0 pr-12 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-0 [&[type='checkbox']]:h-4 [&[type='checkbox']]:w-4 [&[type='checkbox']]:min-h-4 [&[type='checkbox']]:min-w-4 [&[type='checkbox']]:rounded-sm [&[type='checkbox']]:p-0",
+      "velora-auth-input !w-full rounded-none bg-transparent px-0 pr-12 text-base text-foreground placeholder:text-muted-foreground [&[type='checkbox']]:h-4 [&[type='checkbox']]:w-4 [&[type='checkbox']]:min-h-4 [&[type='checkbox']]:min-w-4 [&[type='checkbox']]:rounded-sm [&[type='checkbox']]:p-0",
     formFieldInputShowPasswordButton: "velora-auth-password-toggle",
     formFieldInputShowPasswordIcon: "velora-auth-password-toggle-icon",
     formButtonPrimary:
-      "mt-2 !flex h-12 !w-full items-center justify-center rounded-none border border-primary bg-primary px-5 text-center text-sm font-semibold uppercase leading-none tracking-[0.28em] text-primary-foreground shadow-none transition-all hover:opacity-95 [&_.cl-buttonArrowIcon]:hidden",
+      "velora-auth-submit !flex h-12 !w-full items-center justify-center rounded-none bg-primary px-5 text-center text-sm font-semibold uppercase leading-none tracking-[0.28em] text-primary-foreground transition-all hover:opacity-95 [&_.cl-buttonArrowIcon]:hidden",
     formFieldAction: "hidden",
     footerActionText: "hidden",
     footerActionLink: "hidden",
     identityPreviewText: "text-foreground",
     identityPreviewEditButton: "text-primary hover:text-primary/80",
     formResendCodeLink: "text-primary hover:text-primary/80",
+    otpCodeField: "velora-auth-otp-field w-full",
+    otpCodeFieldInputContainer: "velora-auth-otp-container w-full",
     otpCodeFieldInputs: "velora-auth-otp-inputs",
     otpCodeFieldInput: "velora-auth-otp-input",
+    alertIcon: "velora-auth-alert-icon",
     alertText: "text-sm text-destructive",
-    alertClerkError: "border border-destructive/30 bg-destructive/10 px-3 py-2"
+    alertClerkError:
+      "velora-auth-alert border border-destructive/30 bg-destructive/10 px-3 py-2"
   }
 };
 
@@ -161,14 +166,14 @@ export function AuthShell({
             className="absolute inset-y-0 left-0 hidden w-px bg-border/80 lg:block"
           />
           <AuthKeyboardScope className="relative z-10 flex w-full flex-col justify-center">
-            <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-border/80 pb-4">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-border/80 pb-4">
               <div className="text-[10px] uppercase tracking-[0.34em] text-muted-foreground">
                 {panelLabel}
               </div>
               {controls ? <div className="shrink-0">{controls}</div> : null}
             </div>
             {panelContext}
-            <div className="w-full max-w-md space-y-6">
+            <div className="w-full max-w-md space-y-5">
               {children}
               {footer ? (
                 <div className="border-t border-border/80 pt-4 text-sm text-muted-foreground">

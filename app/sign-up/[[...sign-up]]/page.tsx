@@ -36,7 +36,7 @@ export default async function SignUpPage({
       panelLabel="New account"
       panelTone="setup"
       panelContext={
-        <div className="mb-8 w-full max-w-md" aria-label="Account setup progress">
+        <div className="mb-6 w-full max-w-md" aria-label="Account setup progress">
           <div className="flex items-center justify-between gap-4">
             <div className="text-sm font-medium text-foreground">Set up your access</div>
             <div className="text-[10px] uppercase tracking-[0.22em] text-primary">

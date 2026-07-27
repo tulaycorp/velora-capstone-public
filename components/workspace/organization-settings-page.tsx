@@ -87,6 +87,8 @@ import {
 import { buildEtsyStoreCapacitySummary } from "@/lib/etsy-store-capacity";
 import { resolveEtsyShopMatchedConnections } from "@/lib/etsy-shop-matches";
 import { cn } from "@/lib/utils";
+import { workspacePageCacheKeys } from "@/lib/workspace-page-cache-keys";
+import { loadWorkspacePageResource } from "@/lib/workspace-page-cache";
 import {
   buildCredentialActionKey,
   createEmptyEtsyConnectionStatus,
@@ -148,6 +150,13 @@ export function OrganizationSettingsPage() {
   const etsyOAuthWindowRef = useRef<Window | null>(null);
   const etsyOAuthWindowPollRef = useRef<number | null>(null);
   const activeEtsyOAuthStateRef = useRef<string | null>(null);
+  const cacheScope = useMemo(
+    () => ({
+      organizationId: sessionContext.organization?.id ?? null,
+      userId: sessionContext.user.id
+    }),
+    [sessionContext.organization?.id, sessionContext.user.id]
+  );
 
   useEffect(() => {
     if (!selectedProvider) {
@@ -261,14 +270,19 @@ export function OrganizationSettingsPage() {
         gelatoStatus,
         nextMembers,
         nextJoinRequests
-      ] = await Promise.all([
-        fetchProviders(),
-        fetchEtsyConnectionStatus(),
-        fetchProviderCredentialStatus("printify"),
-        fetchProviderCredentialStatus("gelato"),
-        fetchOrganizationMembers(),
-        fetchOrganizationJoinRequests()
-      ]);
+      ] = await loadWorkspacePageResource(
+        workspacePageCacheKeys.organizationSettings(),
+        cacheScope,
+        () =>
+          Promise.all([
+            fetchProviders(),
+            fetchEtsyConnectionStatus(),
+            fetchProviderCredentialStatus("printify"),
+            fetchProviderCredentialStatus("gelato"),
+            fetchOrganizationMembers(),
+            fetchOrganizationJoinRequests()
+          ])
+      );
 
       setProviders(nextProviders);
       setEtsyConnection(nextEtsyConnection);
@@ -290,7 +304,7 @@ export function OrganizationSettingsPage() {
         setRefreshingAll(false);
       }
     }
-  }, []);
+  }, [cacheScope]);
 
   const clearEtsyOAuthWindowMonitor = useCallback(() => {
     if (etsyOAuthWindowPollRef.current !== null) {

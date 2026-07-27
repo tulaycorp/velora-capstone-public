@@ -4,11 +4,18 @@ import test from "node:test";
 import {
   hasNestedAuthEntryRoute,
   isForgotPasswordEntryRoute,
+  POST_AUTH_HANDOFF_PATH,
   resolvePostAuthLandingPath,
   resolveResetPasswordEmailDeliveryNotice,
+  SIGN_UP_POST_AUTH_PATH,
   resolveSignUpEmailDeliveryNotice,
   shouldRedirectSignedInAuthEntry
 } from "./auth-entry-state.ts";
+
+test("auth completion paths avoid mounting the workspace before access is resolved", () => {
+  assert.equal(POST_AUTH_HANDOFF_PATH, "/auth/complete");
+  assert.equal(SIGN_UP_POST_AUTH_PATH, "/onboarding");
+});
 
 test("root auth routes are not treated as nested Clerk subflows", () => {
   assert.equal(hasNestedAuthEntryRoute(undefined), false);

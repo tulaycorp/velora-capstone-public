@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.actor import ActorContext
 from app.core.config import settings
@@ -193,6 +193,7 @@ def _apply_user_profile(
 
 def ensure_user_record(db: Session, *, actor: ActorContext) -> User:
     user = db.get(User, actor.actor_id)
+    created_user = user is None
     resolved_email = actor.email
     resolved_first_name = actor.first_name
     resolved_last_name = actor.last_name
@@ -230,6 +231,9 @@ def ensure_user_record(db: Session, *, actor: ActorContext) -> User:
             image_url=resolved_image_url,
         )
 
+    if not created_user and not db.is_modified(user, include_collections=False):
+        return user
+
     try:
         db.commit()
     except IntegrityError as exc:
@@ -245,6 +249,8 @@ def ensure_user_record(db: Session, *, actor: ActorContext) -> User:
             last_name=resolved_last_name,
             image_url=resolved_image_url,
         )
+        if not db.is_modified(user, include_collections=False):
+            return user
         db.commit()
 
     db.refresh(user)
@@ -254,7 +260,7 @@ def ensure_user_record(db: Session, *, actor: ActorContext) -> User:
 def get_approved_membership_for_user(db: Session, *, user_id: str) -> Membership | None:
     return db.scalar(
         select(Membership)
-        .options(selectinload(Membership.organization))
+        .options(joinedload(Membership.organization))
         .where(Membership.user_id == user_id)
         .order_by(Membership.created_at.asc())
     )

@@ -75,7 +75,7 @@ export function buildContentSecurityPolicy({
       ...CLERK_SOURCES,
       ...CLOUDFLARE_TURNSTILE_SOURCES,
     ]),
-    formatDirective("style-src", ["'self'"]),
+    formatDirective("style-src", ["'self'", `'nonce-${nonce}'`]),
     formatDirective("img-src", imgSources),
     formatDirective("font-src", ["'self'", "data:"]),
     formatDirective("connect-src", [

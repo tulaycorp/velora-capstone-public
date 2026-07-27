@@ -20,8 +20,7 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=3, ge=1, le=20)
     database_max_overflow: int = Field(default=0, ge=0, le=20)
     database_pool_timeout_seconds: int = Field(default=10, ge=1, le=60)
-    database_pool_recycle_seconds: int = Field(default=300, ge=30, le=3600)
-    database_idle_pool_purge_seconds: int = Field(default=300, ge=0, le=3600)
+    database_pool_recycle_seconds: int = Field(default=1800, ge=30, le=3600)
     cors_origins: list[str] = ["http://localhost:3000"]
     api_base_url: str | None = None
     auth_mode: Literal["local", "clerk", "auto"] = "auto"

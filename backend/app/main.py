@@ -1,5 +1,5 @@
 import asyncio
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 import logging
 import time
 import uuid
@@ -21,18 +21,6 @@ CORS_ALLOWED_HEADERS = ["Authorization", "Content-Type", "X-Request-ID"]
 CORS_EXPOSED_HEADERS = ["X-Request-ID"]
 
 
-async def purge_idle_database_connections(interval_seconds: int) -> None:
-    while True:
-        await asyncio.sleep(interval_seconds)
-        await asyncio.to_thread(engine.pool.dispose)
-        log_event(
-            database_logger,
-            "database.pool.idle_connections_purged",
-            verbose_only=True,
-            interval_seconds=interval_seconds,
-        )
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     if settings.auto_create_schema:
@@ -43,20 +31,9 @@ async def lifespan(_app: FastAPI):
             required_role=settings.database_runtime_role,
         )
 
-    purge_task = None
-    if settings.database_idle_pool_purge_seconds > 0:
-        purge_task = asyncio.create_task(
-            purge_idle_database_connections(settings.database_idle_pool_purge_seconds),
-            name="database-idle-pool-purge",
-        )
-
     try:
         yield
     finally:
-        if purge_task is not None:
-            purge_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await purge_task
         await asyncio.to_thread(engine.dispose)
         log_event(database_logger, "database.pool.disposed")
 

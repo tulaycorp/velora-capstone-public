@@ -10,5 +10,6 @@ export const workspacePageCacheKeys = {
   organizationSettings: () => "workspace:organization-settings",
   product: (productId: string) => `workspace:product:${productId}`,
   productStudio: () => "workspace:product-studio",
-  products: () => "workspace:products"
+  products: () => "workspace:products",
+  storeContext: () => "workspace:store-context"
 } as const;

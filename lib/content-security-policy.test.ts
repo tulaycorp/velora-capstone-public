@@ -16,7 +16,7 @@ test("buildContentSecurityPolicy includes nonce and public-page restrictions", (
 
   assert.match(csp, /script-src [^;]*'nonce-nonce-123'/);
   assert.match(csp, /script-src [^;]*https:\/\/\*\.clerk\.accounts\.dev/);
-  assert.match(csp, /style-src 'self'/);
+  assert.match(csp, /style-src [^;]*'nonce-nonce-123'/);
   assert.doesNotMatch(csp, /style-src [^;]*'unsafe-inline'/);
   assert.match(csp, /img-src [^;]*https:\/\/images\.clerk\.com/);
   assert.doesNotMatch(csp, /img-src 'self' https:/);

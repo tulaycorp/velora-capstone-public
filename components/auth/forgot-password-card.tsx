@@ -5,6 +5,7 @@ import { useSignIn } from "@clerk/nextjs";
 import { LoaderCircle } from "lucide-react";
 import { ClerkAuthLoadingState } from "@/components/auth/clerk-ui";
 import { Button } from "@/components/ui/button";
+import { CodeInput } from "@/components/ui/code-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -187,11 +188,9 @@ export function ForgotPasswordCard() {
       >
         <form className="space-y-6" onSubmit={verifyCode}>
           <AuthField label="Reset code" htmlFor="reset-code">
-            <Input
+            <CodeInput
               id="reset-code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
+              maxLength={6}
               value={code}
               onChange={(event) => setCode(event.target.value)}
               placeholder="Enter the code"
