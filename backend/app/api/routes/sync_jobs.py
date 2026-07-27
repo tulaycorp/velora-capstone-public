@@ -11,7 +11,9 @@ from app.core.config import settings
 from app.core.logging import get_logger, log_event
 from app.db.models import SyncJob as DBSyncJob
 from app.jobs.orders import run_order_sync_background, sync_org_orders
-from app.models.schemas import SyncJob
+from app.api.etsy_sales_sync import request_etsy_sales_sync
+from app.jobs.etsy_sales import ETSY_SALES_JOB_TYPE, ETSY_SALES_SCOPE_KEY
+from app.models.schemas import EtsySalesSyncStatus, SyncJob
 from app.services.sync_job_lifecycle import ACTIVE_SYNC_JOB_STATUSES, enqueue_sync_job
 
 router = APIRouter(tags=["sync-jobs"])
@@ -41,6 +43,18 @@ def _get_active_order_sync_job(db: Session, *, organization_id: str) -> DBSyncJo
     ).scalars().first()
 
 
+def _etsy_sales_sync_jobs_statement(organization_id: str):
+    return (
+        select(DBSyncJob)
+        .where(
+            DBSyncJob.organization_id == organization_id,
+            DBSyncJob.job_type == ETSY_SALES_JOB_TYPE,
+            DBSyncJob.scope_key == ETSY_SALES_SCOPE_KEY,
+        )
+        .order_by(DBSyncJob.created_at.desc(), DBSyncJob.updated_at.desc())
+    )
+
+
 @router.get("/sync-jobs", response_model=list[SyncJob])
 def list_sync_jobs(_actor: ActorContext = Depends(get_workspace_actor_context), db: Session = Depends(get_db)) -> list[SyncJob]:
     jobs = db.execute(
@@ -58,6 +72,30 @@ def get_latest_order_sync_job(
     if job is None:
         return None
     return SyncJob.model_validate(job, from_attributes=True)
+
+
+@router.get("/sync-jobs/etsy-sales/status", response_model=EtsySalesSyncStatus)
+def get_etsy_sales_sync_status(
+    _actor: ActorContext = Depends(get_workspace_actor_context),
+    db: Session = Depends(get_db),
+) -> EtsySalesSyncStatus:
+    statement = _etsy_sales_sync_jobs_statement(_actor.organization_id)
+    latest_job = db.execute(statement.limit(1)).scalars().first()
+    last_successful_job = db.execute(
+        statement.where(DBSyncJob.status.in_(("completed", "partial"))).limit(1)
+    ).scalars().first()
+    return EtsySalesSyncStatus(
+        latest_job=(
+            SyncJob.model_validate(latest_job, from_attributes=True)
+            if latest_job is not None
+            else None
+        ),
+        last_successful_at=(
+            last_successful_job.completed_at
+            if last_successful_job is not None
+            else None
+        ),
+    )
 
 
 @router.get("/sync-jobs/{job_id}", response_model=SyncJob)
@@ -103,3 +141,19 @@ def run_order_sync(
         background_tasks.add_task(run_order_sync_background, job.id, _actor.organization_id)
 
     return SyncJob.model_validate(job, from_attributes=True)
+
+
+@router.post("/sync-jobs/etsy-sales/run", response_model=SyncJob)
+def run_etsy_sales_sync(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(default=False),
+    _actor: ActorContext = Depends(get_workspace_actor_context),
+    db: Session = Depends(get_db),
+) -> SyncJob:
+    result = request_etsy_sales_sync(
+        db,
+        background_tasks,
+        organization_id=_actor.organization_id,
+        force=force,
+    )
+    return SyncJob.model_validate(result.job, from_attributes=True)

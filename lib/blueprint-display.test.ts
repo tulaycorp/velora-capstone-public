@@ -7,8 +7,9 @@ import {
   getBlueprintCardSubtitle,
   getBlueprintCardTitle
 } from "./blueprint-display.ts";
+import type { Blueprint } from "./backend-api.ts";
 
-function buildBlueprint(overrides: Record<string, unknown> = {}) {
+function buildBlueprint(overrides: Partial<Blueprint> = {}): Blueprint {
   return {
     id: "blueprint-1",
     name: "Framed wall art",

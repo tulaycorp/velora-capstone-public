@@ -70,6 +70,11 @@ test("buildMarketPanelState surfaces the unavailable reason when Etsy metrics ar
       review_average: null,
       vacation_shop_count: 0,
       payments_onboarding_issue_count: 0,
+      freshness: "missing",
+      refresh_status: "missing",
+      fetched_at: null,
+      expires_at: null,
+      last_refresh_attempted_at: null,
     }),
     {
       title: "Market snapshot unavailable",

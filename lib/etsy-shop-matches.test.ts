@@ -7,34 +7,14 @@ const storeConnections = [
   {
     id: "gelato-1",
     provider: "gelato",
-    credential_key: "gelato-key",
-    provider_store_id: "gelato-store",
     label: "Peddlex",
-    storefront_type: "etsy",
-    storefront_display_name: "Etsy",
-    etsy_shop_id: "40888999",
-    status: "active",
-    raw_data_json: null,
-    last_sync_at: null,
-    created_at: null,
-    updated_at: null
   },
   {
     id: "printify-1",
     provider: "printify",
-    credential_key: "printify-key",
-    provider_store_id: "printify-store",
     label: "Peddlex -> etsy",
-    storefront_type: "etsy",
-    storefront_display_name: "Etsy",
-    etsy_shop_id: "40888999",
-    status: "active",
-    raw_data_json: null,
-    last_sync_at: null,
-    created_at: null,
-    updated_at: null
   }
-];
+] satisfies Parameters<typeof resolveEtsyShopMatchedConnections>[1];
 
 test("resolveEtsyShopMatchedConnections returns provider and store labels for each matched row", () => {
   const shop = {

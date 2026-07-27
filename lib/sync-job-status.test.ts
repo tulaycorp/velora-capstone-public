@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getEtsySalesSyncCounts,
+  getEtsySalesSyncOutcome,
   getLastSuccessfulOrderSyncAt,
   getLatestSyncJobActivityAt,
   getOrderSyncOutcomeCounts,
@@ -63,6 +65,35 @@ test("order sync helpers expose bounded counts and prior successful freshness", 
       completed_at: "2026-07-16T12:00:00.000Z"
     }),
     "2026-07-16T12:00:00.000Z"
+  );
+});
+
+test("Etsy sales helpers preserve truthful outcomes and bounded ingestion counts", () => {
+  const blockedJob = {
+    status: "failed",
+    result_json: {
+      outcome: "blocked",
+      blocker: "Grant Etsy analytics access.",
+      receipts_processed: -1,
+      lines_processed: 4.8,
+      expenses_processed: 2,
+      records_imported: 6
+    }
+  };
+
+  assert.equal(getEtsySalesSyncOutcome(blockedJob), "blocked");
+  assert.deepEqual(getEtsySalesSyncCounts(blockedJob), {
+    receipts: 0,
+    lines: 4,
+    expenses: 2,
+    recordsImported: 6
+  });
+  assert.equal(
+    getEtsySalesSyncOutcome({
+      status: "completed",
+      result_json: { outcome: "completed_no_data" }
+    }),
+    "completed_no_data"
   );
 });
 

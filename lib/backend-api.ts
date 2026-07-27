@@ -1345,7 +1345,7 @@ export interface OrdersPageResponse {
 export interface SyncJob {
   id: string;
   organization_id: string;
-  provider: PodProviderKey | null;
+  provider: string | null;
   job_type: string;
   scope_key: string;
   status: string;
@@ -1358,6 +1358,11 @@ export interface SyncJob {
   error_message: string | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+export interface EtsySalesSyncStatus {
+  latest_job: SyncJob | null;
+  last_successful_at: string | null;
 }
 
 export async function fetchOrders(
@@ -1390,6 +1395,21 @@ export async function runOrderSync(options?: { force?: boolean }): Promise<SyncJ
 
 export async function fetchLatestOrderSyncJob(): Promise<SyncJob | null> {
   return apiRequest<SyncJob | null>("/sync-jobs/orders/latest");
+}
+
+export async function fetchEtsySalesSyncStatus(): Promise<EtsySalesSyncStatus> {
+  return apiRequest<EtsySalesSyncStatus>("/sync-jobs/etsy-sales/status");
+}
+
+export async function runEtsySalesSync(options?: { force?: boolean }): Promise<SyncJob> {
+  const params = new URLSearchParams();
+  if (options?.force) {
+    params.set("force", "true");
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return apiRequest<SyncJob>(`/sync-jobs/etsy-sales/run${query}`, {
+    method: "POST"
+  });
 }
 
 export async function fetchSyncJobs(): Promise<SyncJob[]> {

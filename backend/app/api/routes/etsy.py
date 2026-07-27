@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.etsy_sales_sync import request_etsy_sales_sync
 from app.api.deps import ActorContext, get_admin_actor_context, get_db
 from app.models import EtsyConnectionStatus, EtsyOAuthCallbackRequest, EtsyOAuthStartResponse
 from app.services import (
@@ -37,20 +38,40 @@ def start_etsy_oauth(
 @router.post("/etsy/oauth/callback", response_model=EtsyConnectionStatus)
 def complete_etsy_oauth(
     payload: EtsyOAuthCallbackRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     actor: ActorContext = Depends(get_admin_actor_context),
 ) -> EtsyConnectionStatus:
-    return complete_etsy_oauth_connection(
+    status = complete_etsy_oauth_connection(
         db,
         actor=actor,
         code=payload.code,
         state=payload.state,
     )
+    if status.matched_connection_count > 0:
+        request_etsy_sales_sync(
+            db,
+            background_tasks,
+            organization_id=actor.organization_id,
+            force=True,
+            fallback_to_background=False,
+        )
+    return status
 
 
 @router.post("/etsy/connection/sync", response_model=EtsyConnectionStatus)
 def sync_etsy_connection(
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     actor: ActorContext = Depends(get_admin_actor_context),
 ) -> EtsyConnectionStatus:
-    return sync_etsy_connection_shops(db, actor=actor)
+    status = sync_etsy_connection_shops(db, actor=actor)
+    if status.matched_connection_count > 0:
+        request_etsy_sales_sync(
+            db,
+            background_tasks,
+            organization_id=actor.organization_id,
+            force=True,
+            fallback_to_background=False,
+        )
+    return status

@@ -18,6 +18,7 @@ test("buildEtsyStoreCapacitySummary counts existing Etsy rows plus unsynced Gela
         status: "active",
         raw_data_json: null,
         last_sync_at: null,
+        order_sync_last_success_at: null,
         created_at: null,
         updated_at: null
       },
@@ -33,6 +34,7 @@ test("buildEtsyStoreCapacitySummary counts existing Etsy rows plus unsynced Gela
         status: "active",
         raw_data_json: null,
         last_sync_at: null,
+        order_sync_last_success_at: null,
         created_at: null,
         updated_at: null
       },
@@ -48,6 +50,7 @@ test("buildEtsyStoreCapacitySummary counts existing Etsy rows plus unsynced Gela
         status: "active",
         raw_data_json: null,
         last_sync_at: null,
+        order_sync_last_success_at: null,
         created_at: null,
         updated_at: null
       }

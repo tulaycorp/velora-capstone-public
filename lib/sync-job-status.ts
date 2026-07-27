@@ -21,6 +21,20 @@ export type OrderSyncOutcomeCounts = {
   failed: number;
 };
 
+export type EtsySalesSyncOutcome =
+  | "blocked"
+  | "completed"
+  | "completed_no_data"
+  | "failed"
+  | "partial";
+
+export type EtsySalesSyncCounts = {
+  receipts: number;
+  lines: number;
+  expenses: number;
+  recordsImported: number;
+};
+
 type PollSyncJobUntilSettledOptions<TJob extends SyncJobLike> = {
   jobId: string;
   fetchJob: (jobId: string) => Promise<TJob>;
@@ -101,6 +115,53 @@ export function getLastSuccessfulOrderSyncAt(
   }
 
   return null;
+}
+
+export function getEtsySalesSyncOutcome(
+  job: SyncJobTimestampLike | null | undefined
+): EtsySalesSyncOutcome | null {
+  if (!job) {
+    return null;
+  }
+  const explicitOutcome = String(asRecord(job.result_json)?.outcome ?? "").trim();
+  if (
+    explicitOutcome === "blocked"
+    || explicitOutcome === "completed"
+    || explicitOutcome === "completed_no_data"
+    || explicitOutcome === "partial"
+  ) {
+    return explicitOutcome;
+  }
+  if (job.status === "failed") {
+    return "failed";
+  }
+  if (job.status === "partial") {
+    return "partial";
+  }
+  if (job.status === "completed") {
+    return "completed";
+  }
+  return null;
+}
+
+export function getEtsySalesSyncCounts(
+  job: SyncJobTimestampLike | null | undefined
+): EtsySalesSyncCounts | null {
+  const result = asRecord(job?.result_json);
+  if (!result) {
+    return null;
+  }
+  const receipts = asCount(result.receipts_processed);
+  const lines = asCount(result.lines_processed);
+  const expenses = asCount(result.expenses_processed);
+  return {
+    receipts,
+    lines,
+    expenses,
+    recordsImported: asCount(
+      result.records_imported ?? receipts + lines + expenses
+    )
+  };
 }
 
 export function shouldAutoStartSync(

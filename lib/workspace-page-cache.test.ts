@@ -72,7 +72,7 @@ test("workspace page cache does not reuse expired entries", () => {
   });
 
   assert.equal(
-    readWorkspacePageCache("workspace:analytics", {
+    readWorkspacePageCache<{ scope: string }>("workspace:analytics", {
       maxAgeMs: 1_500,
       now: () => 2_000,
       scope: tulayScope

@@ -1,5 +1,57 @@
 import { expect, test } from "@playwright/test";
 
+test("starts the first Etsy sales import once and shows an honest no-data result", async ({
+  page
+}) => {
+  let runCount = 0;
+  await page.route("**/api/backend/sync-jobs/etsy-sales/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        latest_job: null,
+        last_successful_at: null
+      })
+    });
+  });
+  await page.route("**/api/backend/sync-jobs/etsy-sales/run", async (route) => {
+    runCount += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "etsy-first-import",
+        organization_id: "org-e2e",
+        provider: "etsy",
+        job_type: "marketplace_sales_sync",
+        scope_key: "etsy:organization",
+        status: "completed",
+        attempt_count: 1,
+        max_attempts: 3,
+        available_at: "2026-07-27T10:00:00Z",
+        result_json: {
+          outcome: "completed_no_data",
+          blocker: null,
+          receipts_processed: 0,
+          lines_processed: 0,
+          expenses_processed: 0,
+          records_imported: 0
+        },
+        started_at: "2026-07-27T10:00:00Z",
+        completed_at: "2026-07-27T10:00:01Z",
+        error_message: null,
+        created_at: "2026-07-27T10:00:00Z",
+        updated_at: "2026-07-27T10:00:01Z"
+      })
+    });
+  });
+
+  await page.goto("/analytics");
+
+  await expect(page.getByText("Etsy sales are up to date")).toBeVisible();
+  expect(runCount).toBe(1);
+});
+
 test("loads analytics once and ignores fresh focus revalidation", async ({ page }) => {
   await page.context().addCookies([
     {

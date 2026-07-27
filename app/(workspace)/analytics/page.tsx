@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -78,10 +78,13 @@ import {
   deleteAnalyticsExpense,
   fetchBusinessAnalytics,
   fetchBusinessAnalyticsDetails,
+  fetchEtsySalesSyncStatus,
+  fetchSyncJob,
   fetchWorkspaceAnalytics,
   formatDateTime,
   mapAnalyticsOrderLine,
   providerLabel,
+  runEtsySalesSync,
   updateAnalyticsPreferences,
   type AnalyticsPreset,
   type AnalyticsDetailPage,
@@ -89,6 +92,7 @@ import {
   type BusinessAnalyticsResponse,
   type ExpenseInput,
   type ExpenseRecord,
+  type EtsySalesSyncStatus,
   type ProductPerformanceRow,
   type ReportingCurrency,
   type SeoPerformanceRow,
@@ -96,6 +100,12 @@ import {
   type UnmatchedOrderLine,
   type WorkspaceAnalyticsResponse,
 } from "@/lib/backend-api";
+import {
+  getEtsySalesSyncCounts,
+  getEtsySalesSyncOutcome,
+  isSyncJobActiveStatus,
+  pollSyncJobUntilSettled,
+} from "@/lib/sync-job-status";
 import { workspacePageCacheKeys } from "@/lib/workspace-page-cache-keys";
 import { cleanStoreDisplayName } from "@/lib/store-display";
 import { format } from "date-fns";
@@ -909,6 +919,79 @@ function MappingDialog({
   );
 }
 
+function EtsySalesSyncNotice({
+  status,
+  error,
+}: {
+  status: EtsySalesSyncStatus;
+  error: string | null;
+}) {
+  const job = status.latest_job;
+  if (!job) return null;
+
+  const active = isSyncJobActiveStatus(job.status);
+  const outcome = getEtsySalesSyncOutcome(job);
+  const counts = getEtsySalesSyncCounts(job);
+  const result = job.result_json ?? {};
+  const blocker =
+    typeof result.blocker === "string" && result.blocker.trim()
+      ? result.blocker
+      : job.error_message;
+  const isProblem = outcome === "blocked" || outcome === "failed" || Boolean(error);
+  const isPartial = outcome === "partial";
+  const title = active
+    ? "Importing Etsy sales"
+    : outcome === "blocked"
+      ? "Etsy sales import is blocked"
+      : outcome === "failed"
+        ? "Etsy sales import failed"
+        : outcome === "completed_no_data"
+          ? "Etsy sales are up to date"
+          : outcome === "partial"
+            ? "Etsy sales imported with a warning"
+            : "Etsy sales imported";
+  const detail = error
+    ?? blocker
+    ?? (outcome === "completed_no_data"
+      ? "Etsy returned no marketplace records for the current import window."
+      : counts
+        ? `${counts.receipts} receipts, ${counts.lines} line items, and ${counts.expenses} fees processed.`
+        : "The latest marketplace data is available to Analytics.");
+
+  return (
+    <div
+      className={`flex gap-3 border-l-2 px-4 py-2.5 ${
+        isProblem
+          ? "border-destructive"
+          : isPartial
+            ? "border-amber-500"
+            : "border-primary"
+      }`}
+    >
+      {active ? (
+        <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />
+      ) : isProblem || isPartial ? (
+        <AlertTriangle
+          className={`mt-0.5 h-4 w-4 shrink-0 ${
+            isProblem ? "text-destructive" : "text-amber-500"
+          }`}
+        />
+      ) : (
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      )}
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">{detail}</p>
+        {status.last_successful_at ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Last successful import {formatDateTime(status.last_successful_at)}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function AnalyticsPage() {
   const { selectedStoreId } = useStoreContext();
   const { sessionContext } = useAppSessionContext();
@@ -924,6 +1007,11 @@ export default function AnalyticsPage() {
   const [mappingLine, setMappingLine] = useState<UnmatchedOrderLine | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [detailRevision, setDetailRevision] = useState(0);
+  const [etsySalesSyncStatus, setEtsySalesSyncStatus] =
+    useState<EtsySalesSyncStatus | null>(null);
+  const [etsySalesSyncError, setEtsySalesSyncError] = useState<string | null>(null);
+  const [etsySalesSyncPending, setEtsySalesSyncPending] = useState(false);
+  const initializedEtsySalesSync = useRef(false);
 
   const queryKey = [
     selectedStoreId,
@@ -962,6 +1050,83 @@ export default function AnalyticsPage() {
     loadResource: loadAnalytics,
     keepPreviousData: true,
   });
+
+  const refreshEtsySalesSyncStatus = useCallback(async () => {
+    const status = await fetchEtsySalesSyncStatus();
+    setEtsySalesSyncStatus(status);
+    return status;
+  }, []);
+
+  const monitorEtsySalesSync = useCallback(
+    async (jobId: string) => {
+      const result = await pollSyncJobUntilSettled({
+        jobId,
+        fetchJob: fetchSyncJob,
+        onJob: (job) => {
+          setEtsySalesSyncStatus((current) => ({
+            latest_job: job,
+            last_successful_at: current?.last_successful_at ?? null,
+          }));
+        },
+      });
+      await refreshEtsySalesSyncStatus();
+      if (!result.timedOut && result.job && !isSyncJobActiveStatus(result.job.status)) {
+        setDetailRevision((current) => current + 1);
+        await load("background");
+      }
+    },
+    [load, refreshEtsySalesSyncStatus]
+  );
+
+  useEffect(() => {
+    if (
+      initializedEtsySalesSync.current
+      || !data?.business.capabilities.etsy_connected
+    ) {
+      return;
+    }
+    initializedEtsySalesSync.current = true;
+    let cancelled = false;
+
+    async function initializeEtsySalesSync() {
+      try {
+        const status = await refreshEtsySalesSyncStatus();
+        if (cancelled) return;
+        let job = status.latest_job;
+        if (!job) {
+          job = await runEtsySalesSync();
+          if (cancelled) return;
+          setEtsySalesSyncStatus({
+            latest_job: job,
+            last_successful_at: status.last_successful_at,
+          });
+        }
+        if (isSyncJobActiveStatus(job.status)) {
+          setEtsySalesSyncPending(true);
+          await monitorEtsySalesSync(job.id);
+        }
+      } catch (syncError) {
+        if (!cancelled) {
+          setEtsySalesSyncError(
+            syncError instanceof Error
+              ? syncError.message
+              : "Unable to check Etsy sales sync status."
+          );
+        }
+      } finally {
+        if (!cancelled) setEtsySalesSyncPending(false);
+      }
+    }
+
+    void initializeEtsySalesSync();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    data?.business.capabilities.etsy_connected,
+    monitorEtsySalesSync,
+    refreshEtsySalesSyncStatus,
+  ]);
 
   useRefetchOnWindowFocus(
     useCallback(async () => {
@@ -1038,6 +1203,31 @@ export default function AnalyticsPage() {
     await load("background");
   }
 
+  async function syncEtsySalesNow() {
+    setEtsySalesSyncPending(true);
+    setEtsySalesSyncError(null);
+    try {
+      const job = await runEtsySalesSync({ force: true });
+      setEtsySalesSyncStatus((current) => ({
+        latest_job: job,
+        last_successful_at: current?.last_successful_at ?? null,
+      }));
+      if (isSyncJobActiveStatus(job.status)) {
+        await monitorEtsySalesSync(job.id);
+      } else {
+        await refreshEtsySalesSyncStatus();
+      }
+    } catch (syncError) {
+      setEtsySalesSyncError(
+        syncError instanceof Error
+          ? syncError.message
+          : "Unable to start Etsy sales sync."
+      );
+    } finally {
+      setEtsySalesSyncPending(false);
+    }
+  }
+
   function selectCurrency(value: ReportingCurrency) {
     setCurrency(value);
     if (isAdmin) {
@@ -1050,14 +1240,30 @@ export default function AnalyticsPage() {
       <PageHeader
         title="Analytics"
         action={
-          <Button
-            variant="outline"
-            onClick={() => void load("background")}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Refreshing" : "Refresh"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {business.capabilities.etsy_connected ? (
+              <Button
+                variant="outline"
+                onClick={() => void syncEtsySalesNow()}
+                disabled={etsySalesSyncPending}
+              >
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${
+                    etsySalesSyncPending ? "animate-spin" : ""
+                  }`}
+                />
+                {etsySalesSyncPending ? "Syncing Etsy" : "Sync Etsy"}
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              onClick={() => void load("background")}
+              disabled={refreshing}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Refreshing" : "Refresh"}
+            </Button>
+          </div>
         }
       />
 
@@ -1111,6 +1317,18 @@ export default function AnalyticsPage() {
             <span>Updated {formatDateTime(business.generated_at)}</span>
           </div>
         </div>
+
+        {business.capabilities.etsy_connected && etsySalesSyncStatus?.latest_job ? (
+          <EtsySalesSyncNotice
+            status={etsySalesSyncStatus}
+            error={etsySalesSyncError}
+          />
+        ) : etsySalesSyncError ? (
+          <div className="flex gap-3 border-l-2 border-destructive px-4 py-2.5 text-sm text-muted-foreground">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <p>{etsySalesSyncError}</p>
+          </div>
+        ) : null}
 
         {business.capabilities.authorization_upgrade_required ? (
           <div className="flex flex-col gap-3 border-l-2 border-amber-500 bg-amber-500/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

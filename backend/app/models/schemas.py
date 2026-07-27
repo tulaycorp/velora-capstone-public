@@ -904,7 +904,7 @@ class OrderPageResponse(BaseModel):
 class SyncJob(BaseModel):
     id: str
     organization_id: str
-    provider: PodProviderKey | None = None
+    provider: str | None = None
     job_type: str
     scope_key: str
     status: str
@@ -917,6 +917,11 @@ class SyncJob(BaseModel):
     error_message: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class EtsySalesSyncStatus(BaseModel):
+    latest_job: SyncJob | None = None
+    last_successful_at: datetime | None = None
 
 
 class SyncEvent(BaseModel):

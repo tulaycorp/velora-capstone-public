@@ -85,7 +85,10 @@ def run_etsy_sales_sync(job_id: str, organization_id: str) -> None:
                 sync_etsy_sales.send(job_id, organization_id)
             return
 
-        terminal_status = "partial" if result.exchange_rate_sync_failed else "completed"
+        terminal_status = {
+            "blocked": "failed",
+            "partial": "partial",
+        }.get(result.outcome, "completed")
         with SessionLocal() as session:
             finish_sync_job(
                 session,
@@ -93,11 +96,7 @@ def run_etsy_sales_sync(job_id: str, organization_id: str) -> None:
                 lease_owner=lease_owner,
                 status=terminal_status,
                 result_json=result.to_result_json(),
-                error_message=(
-                    "Marketplace sales imported, but dated exchange rates could not be refreshed."
-                    if result.exchange_rate_sync_failed
-                    else None
-                ),
+                error_message=result.blocker,
             )
         log_event(
             etsy_sales_logger,
@@ -144,7 +143,7 @@ def enqueue_due_etsy_sales_syncs() -> None:
                     seconds=settings.commerce_sync_interval_seconds
                 ),
             )
-        if result.created:
+        if result.job.status == "queued":
             sync_etsy_sales.send(result.job.id, organization_id)
             dispatched_count += 1
 

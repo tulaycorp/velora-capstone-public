@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.etsy_sales_sync import request_etsy_sales_sync
 from app.api.deps import ActorContext, get_admin_actor_context, get_db, get_workspace_actor_context
 from app.models import (
     ProviderStoreConnection,
@@ -34,10 +35,25 @@ def list_provider_store_connection_records(
 )
 async def sync_provider_store_connection_records(
     provider: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     actor: ActorContext = Depends(get_admin_actor_context),
 ) -> ProviderStoreConnectionSyncResponse:
-    return await sync_provider_store_connections(db, actor=actor, provider=provider)
+    result = await sync_provider_store_connections(db, actor=actor, provider=provider)
+    if any(
+        connection.status == "connected"
+        and connection.storefront_type == "etsy"
+        and connection.etsy_shop_id
+        for connection in result.connections
+    ):
+        request_etsy_sales_sync(
+            db,
+            background_tasks,
+            organization_id=actor.organization_id,
+            force=True,
+            fallback_to_background=False,
+        )
+    return result
 
 
 @router.post(
@@ -47,15 +63,30 @@ async def sync_provider_store_connection_records(
 async def sync_provider_store_connection_records_for_credential(
     provider: str,
     credential_key: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     actor: ActorContext = Depends(get_admin_actor_context),
 ) -> ProviderStoreConnectionSyncResponse:
-    return await sync_provider_store_connections(
+    result = await sync_provider_store_connections(
         db,
         actor=actor,
         provider=provider,
         credential_key=credential_key,
     )
+    if any(
+        connection.status == "connected"
+        and connection.storefront_type == "etsy"
+        and connection.etsy_shop_id
+        for connection in result.connections
+    ):
+        request_etsy_sales_sync(
+            db,
+            background_tasks,
+            organization_id=actor.organization_id,
+            force=True,
+            fallback_to_background=False,
+        )
+    return result
 
 
 @router.patch(
@@ -65,15 +96,29 @@ async def sync_provider_store_connection_records_for_credential(
 def update_provider_store_connection_record(
     connection_id: str,
     payload: ProviderStoreConnectionUpdateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     actor: ActorContext = Depends(get_admin_actor_context),
 ) -> ProviderStoreConnection:
-    return update_provider_store_connection(
+    connection = update_provider_store_connection(
         db,
         actor=actor,
         connection_id=connection_id,
         payload=payload,
     )
+    if (
+        connection.status == "connected"
+        and connection.storefront_type == "etsy"
+        and connection.etsy_shop_id
+    ):
+        request_etsy_sales_sync(
+            db,
+            background_tasks,
+            organization_id=actor.organization_id,
+            force=True,
+            fallback_to_background=False,
+        )
+    return connection
 
 
 @router.delete("/provider-store-connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)

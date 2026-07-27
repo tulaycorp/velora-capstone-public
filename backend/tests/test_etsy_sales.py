@@ -18,6 +18,124 @@ from app.db.models import (
 )
 
 
+def test_etsy_sales_sync_reports_missing_connection_as_blocked(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        etsy_sales.commerce,
+        "_list_etsy_connection_values",
+        lambda _db, *, organization_id: {},
+    )
+
+    with client.app.state.testing_session_local() as db:
+        result = etsy_sales.sync_etsy_marketplace_sales(
+            db,
+            organization_id="default-org",
+        )
+
+    assert result.outcome == "blocked"
+    assert result.blocker == "Connect Etsy before importing marketplace sales."
+    assert result.to_result_json()["records_imported"] == 0
+
+
+def test_etsy_sales_sync_reports_missing_finance_permission_as_blocked(
+    client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        etsy_sales.commerce,
+        "_list_etsy_connection_values",
+        lambda _db, *, organization_id: {
+            "seller-1": {
+                "refresh_token": "refresh-token",
+                "scopes": ["shops_r"],
+                "shops": [{"shop_id": "12345"}],
+            }
+        },
+    )
+
+    with client.app.state.testing_session_local() as db:
+        result = etsy_sales.sync_etsy_marketplace_sales(
+            db,
+            organization_id="default-org",
+        )
+
+    assert result.outcome == "blocked"
+    assert "analytics access" in (result.blocker or "")
+
+
+def test_etsy_sales_sync_reports_unmapped_shop_as_blocked(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        etsy_sales.commerce,
+        "_list_etsy_connection_values",
+        lambda _db, *, organization_id: {
+            "seller-1": {
+                "refresh_token": "refresh-token",
+                "scopes": ["shops_r", "transactions_r"],
+                "shops": [{"shop_id": "unmapped-shop"}],
+            }
+        },
+    )
+
+    with client.app.state.testing_session_local() as db:
+        result = etsy_sales.sync_etsy_marketplace_sales(
+            db,
+            organization_id="default-org",
+        )
+
+    assert result.outcome == "blocked"
+    assert result.skipped_shops == 1
+    assert "Map a connected Velora store" in (result.blocker or "")
+
+
+def test_etsy_sales_sync_distinguishes_successful_no_data_import(client, monkeypatch) -> None:
+    with client.app.state.testing_session_local() as db:
+        db.add(
+            ProviderStoreConnection(
+                id="etsy-no-data-store",
+                organization_id="default-org",
+                provider="printify",
+                credential_key="default",
+                provider_store_id="printify-shop",
+                storefront_type="etsy",
+                storefront_display_name="Etsy",
+                label="No Data Shop",
+                etsy_shop_id="no-data-shop",
+                status="connected",
+            )
+        )
+        db.commit()
+
+    monkeypatch.setattr(
+        etsy_sales.commerce,
+        "_list_etsy_connection_values",
+        lambda _db, *, organization_id: {
+            "seller-1": {
+                "refresh_token": "refresh-token",
+                "seller_user_id": "seller-1",
+                "scopes": ["shops_r", "transactions_r"],
+                "shops": [{"shop_id": "no-data-shop"}],
+            }
+        },
+    )
+    monkeypatch.setattr(etsy_sales, "_refresh_access_token", lambda _token: "access-token")
+    monkeypatch.setattr(etsy_sales, "fetch_etsy_shop_receipts", lambda **_kwargs: [])
+    monkeypatch.setattr(etsy_sales, "fetch_etsy_ledger_entries", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        etsy_sales,
+        "sync_historical_exchange_rates",
+        lambda *_args, **_kwargs: SimpleNamespace(rates_processed=0),
+    )
+
+    with client.app.state.testing_session_local() as db:
+        result = etsy_sales.sync_etsy_marketplace_sales(
+            db,
+            organization_id="default-org",
+        )
+
+    assert result.outcome == "completed_no_data"
+    assert result.blocker is None
+    assert result.to_result_json()["records_imported"] == 0
+
+
 def test_etsy_sales_sync_is_marketplace_first_and_idempotent(client, monkeypatch) -> None:
     now = datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)
     with client.app.state.testing_session_local() as db:

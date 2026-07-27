@@ -24,6 +24,8 @@ from app.services.etsy import (
 
 @dataclass(frozen=True)
 class EtsySalesSyncResult:
+    outcome: str = "completed"
+    blocker: str | None = None
     accounts_processed: int = 0
     shops_processed: int = 0
     receipts_processed: int = 0
@@ -33,8 +35,10 @@ class EtsySalesSyncResult:
     exchange_rate_sync_failed: bool = False
     skipped_shops: int = 0
 
-    def to_result_json(self) -> dict[str, int | bool]:
+    def to_result_json(self) -> dict[str, int | bool | str | None]:
         return {
+            "outcome": self.outcome,
+            "blocker": self.blocker,
             "accounts_processed": self.accounts_processed,
             "shops_processed": self.shops_processed,
             "receipts_processed": self.receipts_processed,
@@ -43,6 +47,11 @@ class EtsySalesSyncResult:
             "exchange_rates_processed": self.exchange_rates_processed,
             "exchange_rate_sync_failed": self.exchange_rate_sync_failed,
             "skipped_shops": self.skipped_shops,
+            "records_imported": (
+                self.receipts_processed
+                + self.lines_processed
+                + self.expenses_processed
+            ),
         }
 
 
@@ -132,6 +141,48 @@ def sync_etsy_marketplace_sales(
         db,
         organization_id=organization_id,
     )
+    if not values_by_key:
+        return EtsySalesSyncResult(
+            outcome="blocked",
+            blocker="Connect Etsy before importing marketplace sales.",
+        )
+
+    refreshable_accounts = [
+        values
+        for values in values_by_key.values()
+        if str(values.get("refresh_token") or "").strip()
+    ]
+    if not refreshable_accounts:
+        return EtsySalesSyncResult(
+            outcome="blocked",
+            blocker="Reconnect Etsy because no usable refresh token is available.",
+        )
+
+    authorized_accounts = [
+        values
+        for values in refreshable_accounts
+        if "transactions_r"
+        in {str(item).strip() for item in values.get("scopes", [])}
+    ]
+    if not authorized_accounts:
+        return EtsySalesSyncResult(
+            outcome="blocked",
+            blocker="Grant Etsy analytics access to import receipts, transactions, and fees.",
+        )
+
+    discovered_shop_ids = {
+        shop_id
+        for values in authorized_accounts
+        for shop in values.get("shops", [])
+        if isinstance(shop, dict)
+        if (shop_id := _first_string(shop, "shop_id"))
+    }
+    if not discovered_shop_ids:
+        return EtsySalesSyncResult(
+            outcome="blocked",
+            blocker="Refresh Etsy shop discovery before importing marketplace sales.",
+        )
+
     products = list(
         db.scalars(
             select(ProviderProductDraft).where(
@@ -148,6 +199,17 @@ def sync_etsy_marketplace_sales(
             )
         ).all()
     )
+    mapped_shop_ids = {
+        connection.etsy_shop_id
+        for connection in connections
+        if connection.status == "connected" and connection.etsy_shop_id
+    }
+    if not discovered_shop_ids.intersection(mapped_shop_ids):
+        return EtsySalesSyncResult(
+            outcome="blocked",
+            blocker="Map a connected Velora store to an Etsy shop before importing marketplace sales.",
+            skipped_shops=len(discovered_shop_ids),
+        )
     existing_marketplace_orders = list(
         db.scalars(
             select(Order).where(
@@ -222,7 +284,12 @@ def sync_etsy_marketplace_sales(
             if not shop_id:
                 continue
             shop_connections = sorted(
-                [connection for connection in connections if connection.etsy_shop_id == shop_id],
+                [
+                    connection
+                    for connection in connections
+                    if connection.status == "connected"
+                    and connection.etsy_shop_id == shop_id
+                ],
                 key=lambda connection: connection.id,
             )
             if not shop_connections:
@@ -449,7 +516,25 @@ def sync_etsy_marketplace_sales(
     except (httpx.HTTPError, ValueError):
         db.rollback()
         exchange_rate_sync_failed = True
+    outcome = "completed"
+    blocker = None
+    if skipped_shops:
+        outcome = "partial"
+        blocker = "Some Etsy shops are not mapped to a connected Velora store."
+    if exchange_rate_sync_failed:
+        outcome = "partial"
+        blocker = "Marketplace sales imported, but dated exchange rates could not be refreshed."
+    if (
+        outcome == "completed"
+        and receipts_processed == 0
+        and lines_processed == 0
+        and expenses_processed == 0
+    ):
+        outcome = "completed_no_data"
+
     return EtsySalesSyncResult(
+        outcome=outcome,
+        blocker=blocker,
         accounts_processed=accounts_processed,
         shops_processed=shops_processed,
         receipts_processed=receipts_processed,

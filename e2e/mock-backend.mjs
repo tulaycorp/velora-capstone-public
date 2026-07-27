@@ -528,6 +528,35 @@ const server = createServer(async (request, response) => {
   if (request.method === "GET" && url.pathname === "/analytics") {
     return sendJson(response, 200, analytics);
   }
+  if (request.method === "GET" && url.pathname === "/sync-jobs/etsy-sales/status") {
+    return sendJson(response, 200, {
+      latest_job: {
+        id: "etsy-sales-sync-e2e",
+        organization_id: "org-e2e",
+        provider: "etsy",
+        job_type: "marketplace_sales_sync",
+        scope_key: "etsy:organization",
+        status: "completed",
+        attempt_count: 1,
+        max_attempts: 3,
+        available_at: NOW,
+        result_json: {
+          outcome: "completed",
+          blocker: null,
+          receipts_processed: 84,
+          lines_processed: 97,
+          expenses_processed: 18,
+          records_imported: 199
+        },
+        started_at: NOW,
+        completed_at: NOW,
+        error_message: null,
+        created_at: NOW,
+        updated_at: NOW
+      },
+      last_successful_at: NOW
+    });
+  }
   if (request.method === "GET" && url.pathname === "/analytics/business") {
     return sendJson(response, 200, {
       ...businessAnalytics,
